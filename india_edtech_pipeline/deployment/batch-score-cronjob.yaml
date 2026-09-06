@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: edtech-batch-scoring
+spec:
+  schedule: "0 2 * * *"   # 02:00 UTC daily (~07:30 IST) — off-peak
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: edtech-india-api-sa   # same Workload Identity as the API, for Key Vault access
+          restartPolicy: OnFailure
+          containers:
+            - name: batch-scoring
+              image: <your-acr-name>.azurecr.io/edtech-india-api:latest
+              command: ["python", "scripts/batch_score.py"]
+              envFrom:
+                - secretRef:
+                    name: edtech-secrets
+              resources:
+                requests:
+                  cpu: "250m"
+                  memory: "512Mi"
+                limits:
+                  cpu: "1"
+                  memory: "1Gi"
+              # Optional: pin this non-latency-sensitive job to a cheaper Spot
+              # node pool (see terraform/spot_node_pool.tf) instead of the
+              # on-demand pool the always-on API runs on.
+              nodeSelector:
+                kubernetes.azure.com/scalesetpriority: spot
+              tolerations:
+                - key: "kubernetes.azure.com/scalesetpriority"
+                  operator: "Equal"
+                  value: "spot"
+                  effect: "NoSchedule"
+          volumes:
+            - name: keyvault-secrets
+              csi:
+                driver: secrets-store.csi.k8s.io
+                readOnly: true
+                volumeAttributes:
+                  secretProviderClass: edtech-keyvault-provider

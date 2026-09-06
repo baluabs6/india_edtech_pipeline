@@ -1,0 +1,34 @@
+# terraform.tfvars.example
+# Copy to terraform.tfvars (gitignored) for local runs, OR — preferred —
+# skip this file entirely in CI/CD and inject the same names as TF_VAR_*
+# environment variables sourced from your pipeline's secret store.
+
+project              = "edtech-india"
+environment           = "dev"
+location              = "centralindia"
+resource_group_name   = "rg-edtech-india"
+aks_cluster_name      = "aks-edtech-india"
+aks_oidc_issuer_url   = "https://<region>.oic.prod-aks.azure.com/<tenant-id>/<oidc-id>/"
+k8s_namespace         = "edtech"
+k8s_service_account_name = "edtech-india-api-sa"
+
+pg_host               = "psql-edtech-india.postgres.database.azure.com"
+pg_user               = "pgadmin"
+pg_admin_password     = "REPLACE_ME"          # supply via TF_VAR_pg_admin_password instead
+mongo_connection_string = "REPLACE_ME"        # supply via TF_VAR_mongo_connection_string instead
+azure_openai_endpoint = "https://<resource>.openai.azure.com/"
+azure_openai_api_key  = "REPLACE_ME"          # supply via TF_VAR_azure_openai_api_key instead
+api_key               = "REPLACE_ME"          # supply via TF_VAR_api_key instead
+azure_language_endpoint = "https://<resource>.cognitiveservices.azure.com/"
+azure_language_key   = "REPLACE_ME"           # supply via TF_VAR_azure_language_key instead
+whatsapp_verify_token = "REPLACE_ME"          # supply via TF_VAR_whatsapp_verify_token instead
+whatsapp_access_token = "REPLACE_ME"          # supply via TF_VAR_whatsapp_access_token instead
+whatsapp_phone_number_id = "REPLACE_ME"
+whatsapp_app_secret   = "REPLACE_ME"           # supply via TF_VAR_whatsapp_app_secret instead
+jwt_secret            = "REPLACE_ME"           # supply via TF_VAR_jwt_secret instead
+client_credentials_json = "{\"bihar-dept\": {\"secret\": \"REPLACE_ME\", \"state\": \"Bihar\"}}"
+smtp_host             = "smtp.example.com"
+smtp_user             = "REPLACE_ME"
+smtp_password         = "REPLACE_ME"           # supply via TF_VAR_smtp_password instead
+alert_from_email      = "alerts@example.org"
+alert_to_emails       = "admin1@example.org,admin2@example.org"

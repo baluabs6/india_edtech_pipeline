@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edtech-india-api
+  labels:
+    app: edtech-india-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: edtech-india-api
+  template:
+    metadata:
+      labels:
+        app: edtech-india-api
+    spec:
+      serviceAccountName: edtech-india-api-sa   # bound to Azure Workload Identity (see terraform/workload_identity.tf)
+      containers:
+        - name: edtech-india-api
+          image: <your-acr-name>.azurecr.io/edtech-india-api:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: edtech-secrets       # synced from Key Vault by the CSI driver, not created manually
+          volumeMounts:
+            - name: keyvault-secrets
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      volumes:
+        - name: keyvault-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: edtech-keyvault-provider
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: edtech-india-api-svc
+spec:
+  type: LoadBalancer
+  selector:
+    app: edtech-india-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: edtech-india-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: edtech-india-api
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+---
+# Secrets are NOT created with `kubectl create secret` or stored in this repo.
+# They live in Azure Key Vault (provisioned by terraform/secrets.tf) and are
+# synced into the cluster at pod-start time by the Secrets Store CSI driver
+# + Azure Workload Identity — see deployment/secret-provider-class.yaml and
+# terraform/workload_identity.tf. No credential ever touches source control,
+# CI logs, or `kubectl` history.

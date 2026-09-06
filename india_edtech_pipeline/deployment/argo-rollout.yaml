@@ -1,0 +1,61 @@
+# Example canary rollout using Argo Rollouts, as a safer alternative to the
+# plain rolling-update Deployment in aks-deployment.yaml.
+#
+# REQUIRES the Argo Rollouts controller installed on the cluster first:
+#   kubectl create namespace argo-rollouts
+#   kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
+#
+# This is provided as a reference/starting point, not wired into the default
+# deployment flow — swap `kubectl apply -f deployment/aks-deployment.yaml`
+# for this file in ci-cd.yml once the controller is installed, and remove
+# the plain Deployment from aks-deployment.yaml to avoid managing the same
+# pods two ways.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: edtech-india-api
+spec:
+  replicas: 3
+  strategy:
+    canary:
+      steps:
+        - setWeight: 20
+        - pause: { duration: 5m }
+        - setWeight: 50
+        - pause: { duration: 5m }
+        - setWeight: 100
+  selector:
+    matchLabels:
+      app: edtech-india-api
+  template:
+    metadata:
+      labels:
+        app: edtech-india-api
+    spec:
+      serviceAccountName: edtech-india-api-sa
+      containers:
+        - name: edtech-india-api
+          image: <your-acr-name>.azurecr.io/edtech-india-api:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: edtech-secrets
+          volumeMounts:
+            - name: keyvault-secrets
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: keyvault-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: edtech-keyvault-provider

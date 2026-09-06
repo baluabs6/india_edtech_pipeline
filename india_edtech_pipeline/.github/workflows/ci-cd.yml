@@ -1,0 +1,155 @@
+name: CI/CD - India EdTech Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  IMAGE_NAME: edtech-india-api
+  RESOURCE_GROUP: ${{ vars.RESOURCE_GROUP }}
+  AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+
+jobs:
+  lint-and-test:
+    name: Lint + Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Lint (flake8)
+        run: flake8 --max-line-length=110 --extend-ignore=E203,W503 . --exclude=terraform,.venv
+
+      - name: Format check (black)
+        run: black --check --line-length=110 .
+
+      - name: Unit tests (pytest)
+        run: pytest tests/ -v
+
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform init
+        run: terraform init -backend-config="resource_group_name=${{ secrets.TFSTATE_RG }}" -backend-config="storage_account_name=${{ secrets.TFSTATE_SA }}" -backend-config="container_name=tfstate" -backend-config="key=edtech-india.terraform.tfstate"
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: terraform plan -input=false
+        env:
+          TF_VAR_pg_admin_password: ${{ secrets.PG_ADMIN_PASSWORD }}
+          TF_VAR_pg_host: ${{ secrets.PG_HOST }}
+          TF_VAR_mongo_connection_string: ${{ secrets.MONGO_CONNECTION_STRING }}
+          TF_VAR_azure_openai_endpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          TF_VAR_api_key: ${{ secrets.API_KEY }}
+          TF_VAR_azure_language_endpoint: ${{ secrets.AZURE_LANGUAGE_ENDPOINT }}
+          TF_VAR_azure_language_key: ${{ secrets.AZURE_LANGUAGE_KEY }}
+          TF_VAR_whatsapp_verify_token: ${{ secrets.WHATSAPP_VERIFY_TOKEN }}
+          TF_VAR_whatsapp_access_token: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          TF_VAR_whatsapp_phone_number_id: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          TF_VAR_whatsapp_app_secret: ${{ secrets.WHATSAPP_APP_SECRET }}
+          TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
+          TF_VAR_client_credentials_json: ${{ secrets.CLIENT_CREDENTIALS_JSON }}
+          TF_VAR_smtp_host: ${{ secrets.SMTP_HOST }}
+          TF_VAR_smtp_user: ${{ secrets.SMTP_USER }}
+          TF_VAR_smtp_password: ${{ secrets.SMTP_PASSWORD }}
+          TF_VAR_alert_from_email: ${{ secrets.ALERT_FROM_EMAIL }}
+          TF_VAR_alert_to_emails: ${{ secrets.ALERT_TO_EMAILS }}
+          TF_VAR_aks_oidc_issuer_url: ${{ secrets.AKS_OIDC_ISSUER_URL }}
+
+  build-and-deploy:
+    name: Build + Deploy (main only)
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform apply
+        working-directory: terraform
+        run: |
+          terraform init -backend-config="resource_group_name=${{ secrets.TFSTATE_RG }}" -backend-config="storage_account_name=${{ secrets.TFSTATE_SA }}" -backend-config="container_name=tfstate" -backend-config="key=edtech-india.terraform.tfstate"
+          terraform apply -auto-approve -input=false
+        env:
+          TF_VAR_pg_admin_password: ${{ secrets.PG_ADMIN_PASSWORD }}
+          TF_VAR_pg_host: ${{ secrets.PG_HOST }}
+          TF_VAR_mongo_connection_string: ${{ secrets.MONGO_CONNECTION_STRING }}
+          TF_VAR_azure_openai_endpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          TF_VAR_api_key: ${{ secrets.API_KEY }}
+          TF_VAR_azure_language_endpoint: ${{ secrets.AZURE_LANGUAGE_ENDPOINT }}
+          TF_VAR_azure_language_key: ${{ secrets.AZURE_LANGUAGE_KEY }}
+          TF_VAR_whatsapp_verify_token: ${{ secrets.WHATSAPP_VERIFY_TOKEN }}
+          TF_VAR_whatsapp_access_token: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          TF_VAR_whatsapp_phone_number_id: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          TF_VAR_whatsapp_app_secret: ${{ secrets.WHATSAPP_APP_SECRET }}
+          TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
+          TF_VAR_client_credentials_json: ${{ secrets.CLIENT_CREDENTIALS_JSON }}
+          TF_VAR_smtp_host: ${{ secrets.SMTP_HOST }}
+          TF_VAR_smtp_user: ${{ secrets.SMTP_USER }}
+          TF_VAR_smtp_password: ${{ secrets.SMTP_PASSWORD }}
+          TF_VAR_alert_from_email: ${{ secrets.ALERT_FROM_EMAIL }}
+          TF_VAR_alert_to_emails: ${{ secrets.ALERT_TO_EMAILS }}
+          TF_VAR_aks_oidc_issuer_url: ${{ secrets.AKS_OIDC_ISSUER_URL }}
+
+      - name: Build + push image to ACR
+        run: |
+          az acr build --registry ${{ env.ACR_NAME }} \
+            --image ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --image ${{ env.IMAGE_NAME }}:latest \
+            -f deployment/Dockerfile .
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER_NAME }} --overwrite-existing
+
+      - name: Deploy manifests
+        run: |
+          kubectl apply -f deployment/secret-provider-class.yaml
+          kubectl apply -f deployment/aks-deployment.yaml
+          kubectl set image deployment/edtech-india-api \
+            edtech-india-api=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          kubectl rollout status deployment/edtech-india-api --timeout=180s

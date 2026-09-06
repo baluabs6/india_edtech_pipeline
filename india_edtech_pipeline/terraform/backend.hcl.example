@@ -1,0 +1,9 @@
+# backend.hcl.example
+# Copy to backend.hcl (gitignored) and fill in real values, or pass these as
+# -backend-config flags. Keeps state (and therefore secret metadata) out of
+# the repo and in an access-controlled Azure Storage account.
+#
+# resource_group_name  = "rg-edtech-tfstate"
+# storage_account_name = "sttfstateedtechindia"
+# container_name       = "tfstate"
+# key                  = "edtech-india.terraform.tfstate"
