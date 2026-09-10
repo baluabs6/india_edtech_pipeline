@@ -30,7 +30,7 @@ def bootstrap():
     rag = RAGIndexer(AzureOpenAIProvider(), MongoDataStore(), pg)
     rag.index_documents()
 
-    logger.info("Bootstrap complete. Start the API with: uvicorn app:app --reload")
+    logger.info("Bootstrap complete. Start the API with: python app.py (or: sanic app.app --host 0.0.0.0 --port 8000)")
 
 
 if __name__ == "__main__":

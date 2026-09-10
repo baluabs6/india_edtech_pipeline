@@ -84,6 +84,7 @@ jobs:
           TF_VAR_whatsapp_phone_number_id: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           TF_VAR_whatsapp_app_secret: ${{ secrets.WHATSAPP_APP_SECRET }}
           TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
+          TF_VAR_export_hash_secret: ${{ secrets.EXPORT_HASH_SECRET }}
           TF_VAR_client_credentials_json: ${{ secrets.CLIENT_CREDENTIALS_JSON }}
           TF_VAR_smtp_host: ${{ secrets.SMTP_HOST }}
           TF_VAR_smtp_user: ${{ secrets.SMTP_USER }}
@@ -126,6 +127,7 @@ jobs:
           TF_VAR_whatsapp_phone_number_id: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           TF_VAR_whatsapp_app_secret: ${{ secrets.WHATSAPP_APP_SECRET }}
           TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
+          TF_VAR_export_hash_secret: ${{ secrets.EXPORT_HASH_SECRET }}
           TF_VAR_client_credentials_json: ${{ secrets.CLIENT_CREDENTIALS_JSON }}
           TF_VAR_smtp_host: ${{ secrets.SMTP_HOST }}
           TF_VAR_smtp_user: ${{ secrets.SMTP_USER }}
