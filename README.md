@@ -183,3 +183,121 @@ quality for students who can already access them. This system optimizes for
 reach and retention for the students most platforms structurally can't
 reach — with privacy and state-level data control built in as requirements,
 not features bolted on later.
+
+---
+
+## 5. Tech stack & features used
+
+Everything below is a library, service, or pattern actually present in this
+repo's code (`requirements.txt`, `terraform/`, `deployment/`), not an
+aspirational list.
+
+### Language & web framework
+- **Python 3.11**
+- **Sanic** (`sanic`, `sanic-ext`) — the async web framework the `/v1/*` API
+  and `/webhook/whatsapp` are built on (`app.py`). *(Not Flask, not
+  BlackSheep — worth being precise about, since these have different async
+  models: Sanic is chosen here specifically because everything downstream —
+  Postgres/Mongo/Redis calls, the OpenAI call, WhatsApp's Graph API call —
+  is run through `asyncio`.)*
+- **Pydantic v2** (`schemas.py`) — request validation; malformed requests get
+  a clean `400` instead of a raw exception.
+- **WebSockets** — `/v1/ask/stream`, a streamed RAG answer over Sanic's
+  native WS support.
+
+### AI / Gen AI
+- **Azure OpenAI** (`openai` SDK, `AzureOpenAI` client) — the underlying Gen
+  AI provider for two things:
+  - **Chat generation** (`gpt-4o-mini` by default) — writes the final
+    grounded answer in `/v1/ask` and the WhatsApp bot.
+  - **Embeddings** (`text-embedding-3-small`) — turns policy-document chunks
+    and questions into vectors for semantic search.
+- **RAG (Retrieval-Augmented Generation)** (`genai/rag_pipeline.py`) — the
+  answer is generated only from retrieved passages, not free generation;
+  includes a lexical-overlap **re-ranking** step on top of vector search.
+- **Azure AI Language** (`azure-ai-textanalytics`) — language detection for
+  incoming questions (English, Hindi, Tamil, and other Indian languages),
+  used to translate for retrieval and answer back in the original language.
+
+### AI / ML models
+- **scikit-learn** — a `RandomForestClassifier` inside a full
+  `Pipeline` (`ColumnTransformer` + `OneHotEncoder` + `StandardScaler`) is
+  the dropout-risk model (`ml/dropout_risk_model.py`).
+- **SHAP** — per-student, per-feature explainability
+  (`explain_prediction`) behind `GET /v1/students/<id>/explain`, so a risk
+  score comes with a plain-language "why."
+- **Custom lightweight model registry** (`ml/model_registry.py`) —
+  timestamped versions + a JSON manifest, with an API-driven rollback
+  (`POST /v1/models/rollback`) instead of a redeploy.
+
+### Data & storage
+- **PostgreSQL** (via `SQLAlchemy` + `psycopg2`) — structured data: schools,
+  students, precomputed risk scores.
+- **pgvector** — the RAG embedding store, queried straight from Postgres
+  instead of a separate vector DB.
+- **MongoDB** (via `pymongo`) — unstructured data: policy-document text,
+  RAG answer feedback.
+- **Redis** (`redis.asyncio`) — response caching (`/v1/ask`,
+  `/v1/students/at-risk`) and sliding/fixed-window rate limiting, in one
+  instance.
+- **pandas / NumPy** — all data cleaning and feature engineering
+  (`ingestion/ingest_pipeline.py`), including the "digital access index."
+- **pandera** — schema validation on ingested data; malformed rows are
+  rejected at load time, not silently accepted.
+
+### Auth & security
+- **PyJWT** — per-client access + rotating refresh tokens
+  (`auth/jwt_auth.py`), each scoped to one Indian state.
+- **HMAC** (`hmac`, `hashlib`) — constant-time client-secret comparison,
+  WhatsApp webhook signature verification (`X-Hub-Signature-256`), and
+  keyed-hash pseudonymization of student IDs in the anonymized export.
+- **Row-level, state-scoped isolation** — enforced in every
+  `/v1/students`, `/v1/schools`, `/v1/districts`, `/v1/export` route, not
+  just at login.
+- **Right-to-deletion** (`DELETE /v1/students/<id>`) with matching cache
+  invalidation.
+- **Fail-fast startup config validation** (`config.py`) — refuses to start
+  in production with a missing/weak `JWT_SECRET` or `EXPORT_HASH_SECRET`.
+
+### Messaging / channel integration
+- **WhatsApp Cloud API** (via `httpx`, Meta's Graph API) — the same RAG
+  Q&A, reachable over WhatsApp for people without a smartphone app or
+  reliable data (`integrations/whatsapp_client.py`).
+- **SMTP** (`smtplib`) — automated email alerts when a student newly
+  crosses the high-risk threshold (`notifications/email_notifier.py`).
+
+### Observability
+- **OpenTelemetry** (`opentelemetry-api`/`sdk`/`otlp-proto-grpc`) —
+  distributed tracing, console or OTLP exporter (`tracing/otel_setup.py`).
+- **`/metrics`** endpoint — request counts, latency, cache hit rate.
+
+### Infrastructure & deployment
+- **Docker** — `python:3.11-slim` base image (`deployment/Dockerfile`).
+- **Azure Kubernetes Service (AKS)** — Deployment, Service, HorizontalPodAutoscaler.
+- **Terraform** — the entire Azure footprint as code (`terraform/`),
+  including the `azurerm` and `azuread` providers.
+- **Azure Key Vault + Workload Identity + Secrets Store CSI driver** — every
+  secret is provisioned by Terraform and read by the pod at runtime via an
+  Azure identity; nothing is hardcoded or stored as a plain Kubernetes
+  Secret manually.
+- **Argo Rollouts** — an example canary-deployment manifest alongside the
+  default rolling-update Deployment.
+- **Spot node pool** — the nightly batch-scoring CronJob runs on cheaper
+  Spot capacity instead of the always-on API's on-demand pool.
+
+### CI/CD & testing
+- **GitHub Actions** (`.github/workflows/ci-cd.yml`) — lint → test →
+  `terraform plan` → build → deploy, gated per PR/merge, authenticated to
+  Azure via OIDC (no long-lived cloud credentials in CI).
+- **pytest** — unit tests for auth/JWT logic and feature engineering
+  (`tests/`).
+- **flake8 + black** — lint and formatting checks in CI.
+
+### Listed as a dependency but not currently used in the code
+Being accurate rather than padding the list: `requirements.txt` also
+includes **`sentence-transformers`** and **`tenacity`**, but neither is
+actually imported anywhere in the codebase today — embeddings come from
+Azure OpenAI instead, and there's no retry-decorator usage yet. Worth
+either wiring them in (e.g. `tenacity` around the Azure OpenAI/WhatsApp
+HTTP calls) or trimming them from `requirements.txt` to keep the dependency
+list honest.
