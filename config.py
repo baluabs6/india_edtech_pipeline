@@ -1,12 +1,3 @@
-"""
-config.py
-Centralized configuration. All secrets are pulled from environment variables
-(.env locally, Azure Key Vault / AKS secrets in production) — never hardcoded.
-
-ENVIRONMENT gates a few safety checks below: "production" (the default)
-refuses to start with missing/insecure secrets; "development" relaxes those
-checks so a laptop without a full secret set can still boot.
-"""
 import os
 import sys
 from dataclasses import dataclass

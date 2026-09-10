@@ -1,8 +1,3 @@
-"""
-test_auth_and_ratelimit.py
-Unit tests for JWT issue/decode (access + rotating refresh tokens) and the
-per-endpoint rate-limit tier lookup — none of these need a live DB/Redis.
-"""
 import os
 import sys
 

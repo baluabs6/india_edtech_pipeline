@@ -1,11 +1,3 @@
-"""
-batch_score.py
-Run nightly (via the AKS CronJob in deployment/batch-score-cronjob.yaml) to
-precompute every student's dropout_risk_score and store it in
-student_risk_scores. This makes GET /v1/students/at-risk a fast table read
-instead of scoring the whole dataset on every request, and lets us detect
-students who newly crossed the high-risk threshold and email an alert.
-"""
 import logging
 
 import joblib

@@ -1,10 +1,3 @@
-"""
-email_notifier.py
-Sends an email alert listing newly-flagged high-risk students, so a school
-admin doesn't have to remember to poll /v1/students/at-risk. Uses plain
-SMTP (works with Azure Communication Services' SMTP relay, SendGrid, or any
-standard mail provider) rather than locking into one vendor's SDK.
-"""
 import logging
 import smtplib
 from email.mime.text import MIMEText

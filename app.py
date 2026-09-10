@@ -1,26 +1,3 @@
-"""
-app.py
-Sanic service — the containerized entrypoint deployed to AKS.
-
-Unversioned routes (infra-level, not part of the public contract):
-  GET  /health                          -> liveness/readiness (pings Postgres + Redis)
-  GET  /metrics                         -> lightweight in-memory request counters
-  GET  /webhook/whatsapp                -> Meta webhook verification handshake
-  POST /webhook/whatsapp                -> Meta webhook incoming messages (signature-verified)
-
-Versioned API (/v1), all requiring EITHER the shared X-API-Key (admin/full
-access) OR a Bearer JWT (scoped to one state via row-level isolation):
-  POST /v1/auth/token                        -> exchange client_id/client_secret for a scoped JWT
-  GET  /v1/students/at-risk?limit=10         -> precomputed risk scores (Redis-cached)
-  GET  /v1/students/<id>/explain             -> SHAP feature contributions for one student's score
-  DELETE /v1/students/<id>                   -> right-to-deletion
-  GET  /v1/schools/<id>/risk-summary         -> school-level rollup
-  GET  /v1/districts/<state>/<district>/risk-summary -> district-level rollup
-  GET  /v1/export/anonymized?state=          -> research export, student_id hashed
-  POST /v1/ask                               -> RAG Q&A (pgvector, multilingual, Redis-cached)
-  POST /v1/ask/feedback                      -> thumbs up/down on a RAG answer
-  WS   /v1/ask/stream                        -> streams the RAG answer in chunks
-"""
 import asyncio
 import hashlib
 import hmac

@@ -1,11 +1,3 @@
-"""
-main.py
-End-to-end orchestration:
-  1. Ingest + feature-engineer data -> PostgreSQL + MongoDB
-  2. Train dropout-risk ML model on Postgres data
-  3. Build RAG vector index over MongoDB policy documents
-Run this once to bootstrap a local/dev environment before starting app.py.
-"""
 import logging
 from ingestion.ingest_pipeline import run_ingestion
 from ml.dropout_risk_model import train_and_evaluate

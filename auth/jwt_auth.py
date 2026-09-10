@@ -1,23 +1,3 @@
-"""
-jwt_auth.py
-Per-client JWT auth, layered alongside the existing shared API_KEY.
-
-- The API_KEY (checked in app.py middleware) is treated as an "admin" key
-  with access to every state's data — useful for internal tools/ops.
-- A JWT access token, issued via POST /v1/auth/token after checking
-  client_id/client_secret against CLIENT_CREDENTIALS_JSON, carries a `state`
-  claim. Row-level isolation then filters every student/school query to
-  that state, so one state education department's client can never see
-  another state's data.
-- Access tokens are short-lived (JWT_EXPIRY_MINUTES, default 60). Rather
-  than making the client re-send its secret every hour, a longer-lived
-  refresh token (REFRESH_TOKEN_EXPIRY_DAYS, default 30) can be exchanged
-  for a new access token via POST /v1/auth/refresh. Refresh tokens are
-  tracked in Redis by their jti (unique ID) so they can be revoked and are
-  rotated on every use — if a stolen refresh token is used after the
-  legitimate client already rotated it, the reused (now-deleted) jti fails,
-  which flags the theft.
-"""
 import hmac
 import json
 import logging

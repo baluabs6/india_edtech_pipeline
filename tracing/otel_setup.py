@@ -1,12 +1,3 @@
-"""
-otel_setup.py
-Minimal OpenTelemetry wiring: a tracer that exports to the console by
-default (fine for local dev) or to an OTLP collector (Azure Monitor,
-Jaeger, etc.) when OTEL_EXPORTER_OTLP_ENDPOINT is set. Kept deliberately
-small — a real production setup would also add auto-instrumentation for
-sqlalchemy/pymongo/httpx, but this gives you the tracer and the pattern to
-extend from.
-"""
 import logging
 
 from opentelemetry import trace

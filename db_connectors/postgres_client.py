@@ -1,10 +1,3 @@
-"""
-postgres_client.py
-Handles structured education data (schools, students, enrollment) AND, since
-this project migrated off FAISS, the RAG vector store — using the pgvector
-extension so all Sanic worker pods share one index instead of each pod
-rebuilding an in-memory FAISS index on startup.
-"""
 import hashlib
 import hmac
 import logging

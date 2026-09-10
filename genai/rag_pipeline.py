@@ -1,14 +1,3 @@
-"""
-rag_pipeline.py
-Retrieval-Augmented Generation over India education-policy documents.
-Raw documents live in MongoDB; embeddings now live in PostgreSQL via the
-pgvector extension (replacing the earlier in-memory FAISS index), so every
-Sanic worker/pod queries the same shared index instead of rebuilding its own
-on startup.
-
-Generation is done via Azure OpenAI chat completions, grounded strictly in
-retrieved context.
-"""
 import logging
 import numpy as np
 from openai import AzureOpenAI

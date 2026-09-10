@@ -1,9 +1,3 @@
-"""
-mongo_client.py
-Handles unstructured / semi-structured data: education policy PDFs (as text),
-news articles on rural connectivity, parent/teacher feedback forms, and the
-vector embeddings used by the RAG pipeline.
-"""
 import logging
 from datetime import datetime, timezone
 from pymongo import MongoClient, ASCENDING

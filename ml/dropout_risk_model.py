@@ -1,8 +1,3 @@
-"""
-dropout_risk_model.py
-Trains a classifier to flag students at risk of dropping out, using
-attendance, test scores, and digital-access features pulled from Postgres.
-"""
 import logging
 import joblib
 import numpy as np

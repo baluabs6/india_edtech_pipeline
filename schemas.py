@@ -1,11 +1,3 @@
-"""
-schemas.py
-Pydantic models for request validation and response shaping. Sanic doesn't
-validate request bodies for you the way FastAPI does, so routes call these
-explicitly (`Model.model_validate(request.json)`) and turn a `ValidationError`
-into a clean 400 response instead of a raw traceback or a confusing
-downstream KeyError.
-"""
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator

@@ -1,10 +1,3 @@
-"""
-ingest_pipeline.py
-Simulates ingesting India school/student datasets (e.g. UDISE+ style extracts),
-cleans them with pandas/numpy, computes derived features, and routes:
-  - structured rows -> PostgreSQL
-  - free-text feedback / reports -> MongoDB
-"""
 import logging
 import numpy as np
 import pandas as pd

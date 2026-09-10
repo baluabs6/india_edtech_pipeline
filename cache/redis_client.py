@@ -1,12 +1,3 @@
-"""
-redis_client.py
-Thin async wrapper around Redis used for two things:
-  1. Response caching (repeated /ask questions, /students/at-risk pages)
-  2. Per-API-key sliding-window rate limiting
-
-Using one Redis instance for both keeps infra simple — in Azure this maps to
-a single Azure Cache for Redis resource.
-"""
 import hashlib
 import json
 import logging

@@ -127,223 +127,59 @@ Raw data (UDISE+-style extract)
 
 ---
 
-## 4. Everything currently implemented
+## 4. What's unique about this, versus other EdTech platforms
 
-| Area | What it does | Where |
-|---|---|---|
-| Ingestion | Cleans raw data, computes features, validates schema with `pandera` before loading | `ingestion/ingest_pipeline.py` |
-| Structured storage | Schools/students/risk-scores in Postgres | `db_connectors/postgres_client.py` |
-| Unstructured storage | Policy docs, RAG feedback in Mongo | `db_connectors/mongo_client.py` |
-| Vector search | RAG embeddings stored/queried via `pgvector` (no per-pod FAISS) | `db_connectors/postgres_client.py`, `genai/rag_pipeline.py` |
-| ML model | RandomForest dropout-risk classifier | `ml/dropout_risk_model.py` |
-| Explainability | SHAP feature contributions per student | `ml/dropout_risk_model.py::explain_prediction`, `GET /v1/students/<id>/explain` |
-| Model versioning | Lightweight local registry (timestamped versions + JSON manifest) | `ml/model_registry.py` |
-| Nightly batch scoring | Precomputes every student's score, emails alerts on new high-risk students | `scripts/batch_score.py`, `deployment/batch-score-cronjob.yaml` |
-| Multilingual RAG | Detects question language; translates for retrieval, answers in the original language | `genai/language_utils.py`, `genai/rag_pipeline.py` |
-| Retrieval quality | Lexical-overlap re-ranking on top of pgvector's cosine search | `genai/rag_pipeline.py::_rerank` |
-| RAG feedback loop | Thumbs up/down + comment on any answer | `POST /v1/ask/feedback` |
-| WhatsApp bot | Same Q&A, reachable over WhatsApp, with signed-webhook verification | `integrations/whatsapp_client.py`, `/webhook/whatsapp` |
-| Per-client auth | Shared admin API key OR per-client JWT, with rotating refresh tokens | `auth/jwt_auth.py`, `POST /v1/auth/token`, `POST /v1/auth/refresh` |
-| Request validation | Pydantic models reject malformed requests with a clean 400 instead of a raw error | `schemas.py` |
-| Tiered rate limiting | `/v1/ask` and `/v1/auth/*` get their own (tighter) per-minute caps, separate from the default | `app.py::RATE_LIMIT_TIERS` |
-| Model version control via API | List registered model versions and roll back the live model without a redeploy | `GET /v1/models/versions`, `POST /v1/models/rollback` |
-| Row-level isolation | A JWT scoped to one state can only ever see that state's data | enforced in every `/v1/students`, `/v1/schools`, `/v1/districts`, `/v1/export` route |
-| Right-to-deletion | Deletes a student's record + cached score on request | `DELETE /v1/students/<id>` |
-| Anonymized export | Research/reporting export with student IDs hashed | `GET /v1/export/anonymized` |
-| Aggregated dashboards | School- and district-level risk rollups | `GET /v1/schools/<id>/risk-summary`, `GET /v1/districts/<state>/<district>/risk-summary` |
-| Caching + rate limiting | Redis-backed response cache and per-client rate limits | `cache/redis_client.py` |
-| Observability | Request metrics (`/metrics`) + OpenTelemetry tracing (console or OTLP export) | `tracing/otel_setup.py` |
-| API versioning | All product endpoints under `/v1/`, infra endpoints unversioned | `app.py` |
-| Secrets management | All secrets in Azure Key Vault, zero hardcoded credentials, Workload Identity | `terraform/`, `deployment/secret-provider-class.yaml` |
-| CI/CD | Lint → test → `terraform plan` → build → deploy, on every PR/merge | `.github/workflows/ci-cd.yml` |
-| Cost-aware scaling | Nightly batch job runs on a cheaper Spot node pool | `terraform/spot_node_pool.tf`, `deployment/batch-score-cronjob.yaml` |
-| Safer rollouts | Example canary deployment (Argo Rollouts) alongside the default rolling-update Deployment | `deployment/argo-rollout.yaml` |
+Most Indian EdTech platforms — BYJU'S, Vedantu, Unacademy and similar — are
+**consumer-facing content platforms**: their core product is video lessons,
+live tutoring, and test prep, sold directly to students and parents who
+already have a device, a connection, and the ability to pay. This system is
+a different category of product entirely: it's **government-facing
+infrastructure for keeping already-enrolled students from disappearing from
+the system**, aimed at the students those platforms don't reach — the ones
+without a reliable device or connection in the first place.
 
----
+Concretely, what that difference produces in the code:
 
-## 5. What is intentionally NOT built here (and why)
+- **It predicts *before* the problem, instead of selling a solution *after* it.**
+  A tutoring app helps a student who's already struggling and already has a
+  parent willing to pay for extra help. This system's whole job is upstream
+  of that: flagging, before a dropout happens, which specific student is at
+  risk and *why* (`ml/dropout_risk_model.py::explain_prediction`) — attendance,
+  test scores, digital access — so a school can intervene while the student
+  is still enrolled, not after they're already gone.
 
-Being upfront: a few frequently-suggested features are genuinely separate
-systems, not a few functions in this repo, and building throwaway versions
-of them would do more harm than good. They're listed here as roadmap items
-rather than faked:
+- **It's built for the lowest-bandwidth channel that exists, not the newest one.**
+  Consumer EdTech competes on app polish and video quality, which assumes a
+  smartphone and real data. This system's question-answering channel is
+  **WhatsApp** (`integrations/whatsapp_client.py`) — text-only, works on a
+  basic connection, and answers in the asker's own Indian language rather
+  than requiring English or an app download.
 
-- **Admin dashboard** — a real one is a separate frontend app (React/Next.js)
-  consuming this API; out of scope for a backend repository.
-- **Azure Purview data lineage** — a platform-level integration you turn on
-  against your actual Azure resources, not application code.
-- **Two-way sync with state SMIS systems** — depends entirely on each
-  state's specific existing system and its own integration API, which
-  doesn't exist in a generic form to build against.
-- **Voice/IVR channel** — a legitimate high-value idea (reaches people
-  WhatsApp/apps can't) but a genuinely separate telephony integration
-  (Azure Communication Services Call Automation + Speech SDK) that deserves
-  its own project rather than a bolt-on.
-- **Argo Rollouts canary controller** — the manifest is provided
-  (`deployment/argo-rollout.yaml`), but it requires installing the Argo
-  Rollouts controller on your cluster first; it's not auto-installed by
-  anything in this repo.
+- **Data governance is a first-class feature, not an afterthought.**
+  A consumer app's core incentive is to keep and monetize as much user data
+  as possible. This system does the opposite by design: a JWT scoped to one
+  state's education department can *only* ever query that state's
+  students (enforced on every route, not just at login), there's a working
+  right-to-deletion endpoint, and the research-export path pseudonymizes
+  student IDs with a keyed HMAC rather than storing or selling raw student
+  profiles.
 
-## 6. Known simplifications (still functional, just not the fanciest version)
+- **It's designed to be operated by a state government, not a single company.**
+  Multi-tenant by state from the ground up (one deployment, many state
+  education departments, strict data isolation between them), with
+  infrastructure-as-code (Terraform + Kubernetes) so a state's IT team can
+  audit and redeploy the entire system rather than depending on a vendor's
+  black-box SaaS.
 
-- **Re-ranking** uses lexical keyword overlap, not a cross-encoder ML model
-  — this avoids a heavy extra dependency, at some cost to ranking quality.
-- **Model registry** is a local JSON manifest + copied files, not a full
-  MLflow tracking server — good enough for versioning/rollback, not for
-  multi-user experiment comparison.
-- **PII protection** is field-level hashing on export, not encryption-at-rest
-  for the live database — for that, use Postgres Transparent Data Encryption
-  (enabled by default on Azure Database for PostgreSQL) plus Azure Disk
-  Encryption on the underlying storage.
+- **The AI answers are grounded, not generative.** The Q&A assistant doesn't
+  freely generate answers about policy — it retrieves the actual relevant
+  passage from official documents first (RAG) and is instructed to answer
+  only from what's retrieved, which matters a great deal more for "what does
+  the government's education policy say" than for a tutoring chatbot helping
+  with algebra homework.
 
----
-
-## 7. Setup
-
-```bash
-pip install -r requirements.txt
-pip install -r requirements-dev.txt   # pytest/flake8/black
-
-# .env — see terraform/terraform.tfvars.example for the full list of values
-PG_HOST=localhost
-PG_PASSWORD=postgres
-MONGO_URI=mongodb://localhost:27017
-REDIS_URL=redis://localhost:6379/0
-AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
-AZURE_OPENAI_API_KEY=<key>
-API_KEY=<shared-admin-api-key>
-AZURE_LANGUAGE_ENDPOINT=https://<resource>.cognitiveservices.azure.com/
-AZURE_LANGUAGE_KEY=<key>
-WHATSAPP_VERIFY_TOKEN=<any string, set in the Meta App dashboard too>
-WHATSAPP_ACCESS_TOKEN=<meta system-user token>
-WHATSAPP_PHONE_NUMBER_ID=<from the Meta App dashboard>
-WHATSAPP_APP_SECRET=<meta app secret, for webhook signature verification>
-JWT_SECRET=<random long string>
-REFRESH_TOKEN_EXPIRY_DAYS=30
-CLIENT_CREDENTIALS_JSON={"bihar-dept": {"secret": "change-me", "state": "Bihar"}}
-SMTP_HOST=smtp.example.com
-SMTP_USER=alerts@example.org
-SMTP_PASSWORD=<password>
-ALERT_FROM_EMAIL=alerts@example.org
-ALERT_TO_EMAILS=admin1@example.org,admin2@example.org
-HIGH_RISK_THRESHOLD=0.7
-OTEL_ENABLED=false
-
-python main.py          # bootstrap: ingest -> train -> index (pgvector)
-python scripts/batch_score.py   # precompute risk scores once, for local testing
-sanic app:app --host=0.0.0.0 --port=8000 --workers=2 --dev
-```
-
-Run tests locally: `pytest tests/ -v`
-
-### Getting a scoped login token (and refreshing it)
-
-```bash
-curl -X POST http://localhost:8000/v1/auth/token \
-  -H "Content-Type: application/json" \
-  -d '{"client_id": "bihar-dept", "client_secret": "change-me"}'
-# -> {"access_token": "...", "refresh_token": "...", "state_scope": "Bihar", ...}
-
-curl http://localhost:8000/v1/students/at-risk \
-  -H "Authorization: Bearer <access_token>"
-# only ever returns Bihar's students
-
-# When the access token expires (default 60 min), exchange the refresh
-# token for a new pair instead of sending client_secret again:
-curl -X POST http://localhost:8000/v1/auth/refresh \
-  -H "Content-Type: application/json" \
-  -d '{"refresh_token": "<refresh_token>"}'
-# -> a new access_token AND a new refresh_token (the old refresh token is now revoked)
-```
-
-Or use the shared admin key for unrestricted access:
-```bash
-curl http://localhost:8000/v1/students/at-risk -H "X-API-Key: <API_KEY>"
-```
-
----
-
-## 8. Deploying to AKS
-
-```bash
-az acr build --registry <acr-name> --image edtech-india-api:latest -f deployment/Dockerfile .
-kubectl apply -f deployment/secret-provider-class.yaml
-kubectl apply -f deployment/aks-deployment.yaml
-kubectl apply -f deployment/batch-score-cronjob.yaml
-```
-
-On your managed Postgres (Azure Database for PostgreSQL Flexible Server),
-enable pgvector first:
-```bash
-az postgres flexible-server parameter set --name azure.extensions --value VECTOR ...
-```
-
-## 9. Secrets management (Terraform + Azure Key Vault)
-
-Every secret above is provisioned into Azure Key Vault by Terraform, never
-hardcoded. Pods read them at runtime via Workload Identity + the Secrets
-Store CSI driver — no password is ever stored in the cluster.
-
-```bash
-cd terraform
-terraform init -backend-config=backend.hcl
-terraform plan  -var-file=terraform.tfvars   # or rely on TF_VAR_* env vars
-terraform apply -var-file=terraform.tfvars
-
-terraform output -raw workload_identity_client_id
-terraform output -raw key_vault_name
-terraform output -raw workload_identity_tenant_id
-```
-
-Feed those three output values into `deployment/secret-provider-class.yaml`.
-`terraform.tfvars`, `backend.hcl`, and `.tfstate` are all gitignored.
-
-## 10. CI/CD (`.github/workflows/ci-cd.yml`)
-
-| Stage | Trigger | What it does |
-|---|---|---|
-| Lint + test | every PR | `flake8`, `black --check`, `pytest tests/` |
-| Terraform plan | every PR (after lint passes) | `terraform fmt -check`, `validate`, `plan` |
-| Build + deploy | push to `main` | `terraform apply` → `az acr build` → `kubectl apply` + rollout |
-
-Requires an Azure AD app registration with a federated credential trusting
-GitHub's OIDC issuer (separate from the AKS Workload Identity federation in
-`terraform/workload_identity.tf`). Repository variables: `ACR_NAME`,
-`RESOURCE_GROUP`, `AKS_CLUSTER_NAME`. Repository secrets: `AZURE_CLIENT_ID`,
-`AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `TFSTATE_RG`, `TFSTATE_SA`, plus
-one secret per `TF_VAR_*` referenced in the workflow file.
-
----
-
-## 11. API reference (quick summary)
-
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| GET | `/health` | none | liveness/readiness |
-| GET | `/metrics` | none | request/error counts, cache hits |
-| POST | `/v1/auth/token` | none (IP rate-limited) | exchange client credentials for an access + refresh token pair |
-| POST | `/v1/auth/refresh` | none (IP rate-limited) | exchange a refresh token for a new access + refresh pair (old refresh token is revoked) |
-| GET | `/v1/models/versions` | API key or JWT | list registered model versions with metrics |
-| POST | `/v1/models/rollback` | API key only | promote a previous model version back to live, without a redeploy |
-| GET | `/v1/students/at-risk` | API key or JWT | ranked dropout-risk list (state-filtered for JWT) |
-| GET | `/v1/students/<id>/explain` | API key or JWT | SHAP explanation for one student's score |
-| DELETE | `/v1/students/<id>` | API key or JWT | right-to-deletion |
-| GET | `/v1/schools/<id>/risk-summary` | API key or JWT | school-level rollup |
-| GET | `/v1/districts/<state>/<district>/risk-summary` | API key or JWT | district-level rollup |
-| GET | `/v1/export/anonymized` | API key or JWT | research export, IDs hashed |
-| POST | `/v1/ask` | API key or JWT | multilingual RAG Q&A |
-| POST | `/v1/ask/feedback` | API key or JWT | thumbs up/down on an answer |
-| WS | `/v1/ask/stream` | API key or JWT | streamed RAG answer |
-| GET/POST | `/webhook/whatsapp` | Meta signature | WhatsApp bot |
-
----
-
-## 12. Notes / production hardening
-
-- Sample data in `ingestion/ingest_pipeline.py` is synthetic; swap in a real
-  UDISE+/state extract via `pd.read_csv` or Azure Blob Storage.
-- For production Mongo, use **Azure Cosmos DB for MongoDB API**.
-- For production Postgres, use **Azure Database for PostgreSQL Flexible
-  Server** with the `VECTOR` extension and Transparent Data Encryption on.
-- For production Redis, use **Azure Cache for Redis**.
-- Rotate the shared `API_KEY` and `JWT_SECRET` regularly.
+In short: consumer EdTech platforms optimize for engagement and content
+quality for students who can already access them. This system optimizes for
+reach and retention for the students most platforms structurally can't
+reach — with privacy and state-level data control built in as requirements,
+not features bolted on later.

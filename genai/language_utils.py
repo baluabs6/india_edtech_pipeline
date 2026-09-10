@@ -1,9 +1,3 @@
-"""
-language_utils.py
-Detects the language of an incoming question so the RAG pipeline can answer
-in that same language — important for this domain since most parents and
-teachers in rural India will ask in Hindi or a regional language, not English.
-"""
 import logging
 from azure.ai.textanalytics import TextAnalyticsClient
 from azure.core.credentials import AzureKeyCredential

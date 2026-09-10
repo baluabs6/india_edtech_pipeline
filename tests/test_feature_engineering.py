@@ -1,8 +1,3 @@
-"""
-test_feature_engineering.py
-Fast, dependency-free unit tests — no live Postgres/Mongo/Azure connections.
-Run with: pytest tests/
-"""
 import numpy as np
 import pandas as pd
 import sys

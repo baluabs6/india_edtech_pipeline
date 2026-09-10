@@ -1,9 +1,3 @@
-"""
-whatsapp_client.py
-Thin wrapper around Meta's WhatsApp Cloud API (Graph API) so the RAG /ask
-pipeline can be reached over WhatsApp — the dominant channel for parents and
-teachers in rural India, far more than a web app or a dedicated mobile app.
-"""
 import logging
 import httpx
 

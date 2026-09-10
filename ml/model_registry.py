@@ -1,10 +1,3 @@
-"""
-model_registry.py
-A deliberately minimal model registry: versioned joblib files plus a JSON
-manifest recording metrics per version. This gets you versioning + rollback
-without standing up an MLflow tracking server — swap this for real MLflow
-(or Azure ML model registry) once you need multi-user experiment tracking.
-"""
 import json
 import logging
 import os
