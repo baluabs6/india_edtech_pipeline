@@ -23,8 +23,16 @@ class RedisCache:
 
     @staticmethod
     def make_key(*parts: str) -> str:
+        # Keep the first part as a readable namespace prefix (e.g.
+        # "students-at-risk", "ask") instead of hashing it away entirely.
+        # This is what makes invalidate_namespace() below possible — an
+        # opaque hash-only key can't be pattern-matched for bulk deletion,
+        # which is exactly why deleted students could keep showing up in
+        # cached /students/at-risk pages until TTL expiry.
+        namespace = str(parts[0]) if parts else "default"
         raw = "|".join(str(p) for p in parts)
-        return "cache:" + hashlib.sha256(raw.encode()).hexdigest()
+        digest = hashlib.sha256(raw.encode()).hexdigest()
+        return f"cache:{namespace}:{digest}"
 
     async def get_json(self, key: str):
         raw = await self.client.get(key)
@@ -35,6 +43,29 @@ class RedisCache:
 
     async def close(self):
         await self.client.aclose()
+
+    async def invalidate_namespace(self, namespace: str) -> int:
+        """
+        Deletes every cached entry under a namespace (e.g. every cached
+        /students/at-risk page, across all limit/state combinations) via
+        non-blocking SCAN + DELETE.
+
+        Used on student deletion: we don't track which specific cached pages
+        included a given student_id, so rather than leave a right-to-deletion
+        gap where a cached page can keep serving a "deleted" student's data
+        until TTL expiry, we invalidate the whole namespace. At a 300s
+        default TTL this is cheap and the cache repopulates on next read.
+        """
+        cursor = 0
+        pattern = f"cache:{namespace}:*"
+        deleted = 0
+        while True:
+            cursor, keys = await self.client.scan(cursor=cursor, match=pattern, count=200)
+            if keys:
+                deleted += await self.client.delete(*keys)
+            if cursor == 0:
+                break
+        return deleted
 
     # ---- Rate limiting: fixed-window counter per identity, per tier ----
     async def is_rate_limited(self, identity: str, limit: int, window_seconds: int,

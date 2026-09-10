@@ -2,12 +2,20 @@
 config.py
 Centralized configuration. All secrets are pulled from environment variables
 (.env locally, Azure Key Vault / AKS secrets in production) — never hardcoded.
+
+ENVIRONMENT gates a few safety checks below: "production" (the default)
+refuses to start with missing/insecure secrets; "development" relaxes those
+checks so a laptop without a full secret set can still boot.
 """
 import os
+import sys
 from dataclasses import dataclass
 from dotenv import load_dotenv
 
 load_dotenv()
+
+ENVIRONMENT = os.getenv("ENVIRONMENT", "production").lower()
+IS_PRODUCTION = ENVIRONMENT == "production"
 
 
 @dataclass(frozen=True)
@@ -47,6 +55,12 @@ class WhatsAppConfig:
     phone_number_id: str = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
     graph_api_version: str = os.getenv("WHATSAPP_GRAPH_API_VERSION", "v20.0")
     app_secret: str = os.getenv("WHATSAPP_APP_SECRET", "")  # for X-Hub-Signature-256 verification
+    # Explicit, opt-in-only escape hatch for local/dev boxes that don't have
+    # a Meta app secret configured. Defaults to False everywhere, including
+    # development, so it has to be turned on deliberately, never inherited
+    # silently — the old behavior was "no secret set -> skip verification",
+    # which fails OPEN in production if the secret is ever missing.
+    allow_unsigned_webhook: bool = os.getenv("ALLOW_UNSIGNED_WEBHOOK", "false").lower() == "true"
 
 
 @dataclass(frozen=True)
@@ -64,6 +78,10 @@ class AuthConfig:
     # JSON string: {"client_id": {"secret": "...", "state": "Bihar"}, ...}
     # "state": null/absent means the client can see all states (admin-level client).
     client_credentials_json: str = os.getenv("CLIENT_CREDENTIALS_JSON", "{}")
+    # HMAC key used to pseudonymize student_id in /v1/export/anonymized.
+    # Deliberately separate from jwt_secret so rotating one never silently
+    # rotates (and re-identifies past exports under) the other.
+    export_hash_secret: str = os.getenv("EXPORT_HASH_SECRET", "")
 
 
 @dataclass(frozen=True)
@@ -92,3 +110,51 @@ WHATSAPP = WhatsAppConfig()
 AUTH = AuthConfig()
 NOTIFY = NotificationConfig()
 TRACING = TracingConfig()
+
+
+def _fail_fast_on_insecure_config() -> None:
+    """
+    Refuses to start rather than run with a secret that can be forged or
+    guessed. Every one of these previously had a default that let the app
+    boot "successfully" while actually being wide open — that's worse than
+    crashing at startup, because a crash gets noticed immediately and a
+    silent insecure default doesn't.
+
+    Skippable only via ENVIRONMENT=development, and even then each skip is
+    logged loudly so it's never mistaken for "fully configured".
+    """
+    problems = []
+
+    if not AUTH.jwt_secret or len(AUTH.jwt_secret) < 32:
+        problems.append(
+            "JWT_SECRET is unset or too short (< 32 chars). An empty/weak "
+            "secret means JWTs can be forged, including admin-equivalent "
+            "(all-states) tokens."
+        )
+    if not AUTH.export_hash_secret or len(AUTH.export_hash_secret) < 32:
+        problems.append(
+            "EXPORT_HASH_SECRET is unset or too short (< 32 chars). Without "
+            "a real secret, the 'anonymized' export's student_id hashes are "
+            "reversible by brute force over the small sequential ID space."
+        )
+    if PG.password in ("", "postgres") and PG.host not in ("localhost", "127.0.0.1"):
+        problems.append(
+            "PG_PASSWORD is unset/default while PG_HOST points at a non-local "
+            "host — refusing to connect a real database with a default password."
+        )
+
+    if not problems:
+        return
+
+    message = "Insecure configuration detected:\n" + "\n".join(f"  - {p}" for p in problems)
+
+    if IS_PRODUCTION:
+        raise RuntimeError(
+            message + "\n\nRefusing to start. Set these via Key Vault/AKS secrets, "
+            "or set ENVIRONMENT=development for local work with relaxed checks."
+        )
+    else:
+        print(f"WARNING (ENVIRONMENT={ENVIRONMENT}, checks relaxed):\n{message}", file=sys.stderr)
+
+
+_fail_fast_on_insecure_config()

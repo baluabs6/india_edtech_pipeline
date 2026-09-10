@@ -346,7 +346,11 @@ async def student_explain(request: Request, student_id: int):
 
 @v1.delete("/students/<student_id:int>")
 async def student_delete(request: Request, student_id: int):
-    """Right-to-deletion: removes the student's record and any cached risk score."""
+    """Right-to-deletion: removes the student's record and any cached risk score.
+
+    Also purges the students-at-risk cache namespace, not just the Postgres
+    row — otherwise a cached /students/at-risk page (up to REDIS_CACHE_TTL
+    seconds old) could keep serving this student's data after "deletion"."""
     ctx = request.app.ctx
     loop = asyncio.get_event_loop()
 
@@ -357,6 +361,7 @@ async def student_delete(request: Request, student_id: int):
         return json_response({"error": "not found"}, status=404)
 
     deleted = await loop.run_in_executor(None, ctx.pg_client.delete_student, student_id)
+    await ctx.redis.invalidate_namespace("students-at-risk")
     return json_response({"deleted": deleted > 0})
 
 
@@ -527,11 +532,26 @@ app.blueprint(v1)
 def _verify_whatsapp_signature(request: Request) -> bool:
     """Validates Meta's X-Hub-Signature-256 header (HMAC-SHA256 of the raw
     body, keyed with the Meta App secret) so only genuine Meta requests are
-    processed. Skipped (with a warning) if WHATSAPP_APP_SECRET isn't set,
-    so local/dev setups without it don't hard-fail."""
+    processed.
+
+    Fails CLOSED if WHATSAPP_APP_SECRET isn't set: an unsigned request is
+    rejected. The old behavior returned True (accepted the request) in that
+    case, which meant a missing env var in production silently turned into
+    "anyone can POST arbitrary messages into the LLM pipeline as if from
+    Meta." The only way to skip verification now is the explicit
+    ALLOW_UNSIGNED_WEBHOOK=true dev flag, which defaults to off everywhere."""
     if not WHATSAPP.app_secret:
-        logger.warning("WHATSAPP_APP_SECRET not set — skipping webhook signature verification")
-        return True
+        if WHATSAPP.allow_unsigned_webhook:
+            logger.warning(
+                "WHATSAPP_APP_SECRET not set — skipping signature verification "
+                "because ALLOW_UNSIGNED_WEBHOOK=true (dev only, never set this in prod)"
+            )
+            return True
+        logger.error(
+            "WHATSAPP_APP_SECRET not set — rejecting webhook request. "
+            "Set WHATSAPP_APP_SECRET, or ALLOW_UNSIGNED_WEBHOOK=true for local dev only."
+        )
+        return False
 
     signature_header = request.headers.get("x-hub-signature-256", "")
     if not signature_header.startswith("sha256="):

@@ -5,10 +5,12 @@ this project migrated off FAISS, the RAG vector store — using the pgvector
 extension so all Sanic worker pods share one index instead of each pod
 rebuilding an in-memory FAISS index on startup.
 """
+import hashlib
+import hmac
 import logging
 import pandas as pd
 from sqlalchemy import create_engine, text
-from config import PG
+from config import PG, AUTH
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -230,15 +232,32 @@ class PostgresClient:
 
     def get_anonymized_export(self, state: str | None = None) -> pd.DataFrame:
         """
-        Research/reporting export: student_id is replaced with a salted hash
-        so individual students can't be re-identified from the export, while
-        still letting analysts group/count records consistently.
+        Research/reporting export: student_id is replaced with a keyed-hash
+        (HMAC-SHA256) reference so individual students can't be
+        re-identified from the export, while still letting analysts
+        group/count records consistently.
+
+        This MUST be HMAC with a real secret, not a plain hash with a fixed
+        public "salt" — student_id is a small sequential Postgres SERIAL, so
+        a fixed, non-secret salt lets anyone precompute
+        sha256(f"{known_salt}:{id}") for every id in the plausible range and
+        reverse the entire export in seconds. HMAC with a secret key that
+        never leaves Key Vault closes that: the attacker would need the key,
+        not just the (guessable) id space, to invert it.
         """
-        import hashlib
+        if not AUTH.export_hash_secret:
+            # Fail loudly rather than silently falling back to a non-secret
+            # hash — config.py should already have refused to start in
+            # production without this, but this is the last line of defense
+            # if this method is ever called from a context that bypassed it.
+            raise RuntimeError(
+                "EXPORT_HASH_SECRET is not configured — refusing to produce "
+                "an 'anonymized' export that would actually be reversible."
+            )
         df = self.get_training_dataset(state=state)
-        salt = "edtech-india-export"  # rotate this if you need to invalidate old export hashes
+        key = AUTH.export_hash_secret.encode()
         df["student_ref"] = df["student_id"].apply(
-            lambda sid: hashlib.sha256(f"{salt}:{sid}".encode()).hexdigest()[:16]
+            lambda sid: hmac.new(key, str(sid).encode(), hashlib.sha256).hexdigest()[:16]
         )
         return df.drop(columns=["student_id"])
 

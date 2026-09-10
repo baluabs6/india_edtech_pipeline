@@ -133,6 +133,12 @@ variable "jwt_secret" {
   sensitive   = true
 }
 
+variable "export_hash_secret" {
+  description = "HMAC key used to pseudonymize student_id in the anonymized research export. Must be a distinct value from jwt_secret."
+  type        = string
+  sensitive   = true
+}
+
 variable "client_credentials_json" {
   description = "JSON map of client_id -> {secret, state} for JWT-based, state-scoped API clients"
   type        = string

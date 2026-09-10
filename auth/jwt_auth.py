@@ -18,6 +18,7 @@ Per-client JWT auth, layered alongside the existing shared API_KEY.
   legitimate client already rotated it, the reused (now-deleted) jti fails,
   which flags the theft.
 """
+import hmac
 import json
 import logging
 import time
@@ -44,7 +45,11 @@ def authenticate_client(client_id: str, client_secret: str) -> dict | None:
     """Returns the client's config dict ({"secret":..., "state":...}) if credentials match."""
     creds = _load_client_credentials()
     entry = creds.get(client_id)
-    if entry and entry.get("secret") == client_secret:
+    # Constant-time comparison: these secrets belong to state education
+    # departments and gate access to a whole state's student data, so a
+    # timing side-channel on `==` (which short-circuits on the first
+    # mismatched byte) is a real risk here, not a theoretical one.
+    if entry and hmac.compare_digest(entry.get("secret", ""), client_secret):
         return entry
     return None
 

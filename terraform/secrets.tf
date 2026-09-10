@@ -96,6 +96,17 @@ resource "azurerm_key_vault_secret" "jwt_secret" {
   depends_on   = [azurerm_role_assignment.tf_runner_secrets_officer]
 }
 
+resource "azurerm_key_vault_secret" "export_hash_secret" {
+  # Keyed-hash secret for pseudonymizing student_id in /v1/export/anonymized.
+  # Deliberately a distinct secret from JWT-SECRET (see config.py) so
+  # rotating one never silently rotates, and re-identifies past exports
+  # under, the other.
+  name         = "EXPORT-HASH-SECRET"
+  value        = var.export_hash_secret
+  key_vault_id = azurerm_key_vault.main.id
+  depends_on   = [azurerm_role_assignment.tf_runner_secrets_officer]
+}
+
 resource "azurerm_key_vault_secret" "client_credentials_json" {
   name         = "CLIENT-CREDENTIALS-JSON"
   value        = var.client_credentials_json
