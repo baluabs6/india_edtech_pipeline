@@ -1,90 +1,90 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: ******1
+kind: *********t
 metadata:
-  name: edtech-india-api
+  name: ***************i
   labels:
-    app: edtech-india-api
+    app: ***************i
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: edtech-india-api
+      app: ***************i
   template:
     metadata:
       labels:
-        app: edtech-india-api
+        app: ***************i
     spec:
-      serviceAccountName: edtech-india-api-sa   # bound to Azure Workload Identity (see terraform/workload_identity.tf)
+      serviceAccountName: ********************************************************************************************)
       containers:
-        - name: edtech-india-api
-          image: <your-acr-name>.azurecr.io/edtech-india-api:latest
+        - name: ***************i
+          image: *************************************************t
           ports:
-            - containerPort: 8000
+            - containerPort: ***0
           envFrom:
             - secretRef:
-                name: edtech-secrets       # synced from Key Vault by the CSI driver, not created manually
+                name: ***********************************************************************************y
           volumeMounts:
-            - name: keyvault-secrets
-              mountPath: "/mnt/secrets-store"
-              readOnly: true
+            - name: ***************s
+              mountPath: *******************"
+              readOnly: ***e
           resources:
             requests:
-              cpu: "250m"
-              memory: "512Mi"
+              cpu: *****"
+              memory: ******"
             limits:
-              cpu: "1"
-              memory: "1Gi"
+              cpu: **"
+              memory: ****"
           readinessProbe:
             httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 10
+              path: ******h
+              port: ***0
+            initialDelaySeconds: *0
+            periodSeconds: *0
           livenessProbe:
             httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 15
-            periodSeconds: 20
+              path: ******h
+              port: ***0
+            initialDelaySeconds: *5
+            periodSeconds: *0
       volumes:
-        - name: keyvault-secrets
+        - name: ***************s
           csi:
-            driver: secrets-store.csi.k8s.io
-            readOnly: true
+            driver: ***********************o
+            readOnly: ***e
             volumeAttributes:
-              secretProviderClass: edtech-keyvault-provider
+              secretProviderClass: ***********************r
 ---
-apiVersion: v1
-kind: Service
+apiVersion: *1
+kind: ******e
 metadata:
-  name: edtech-india-api-svc
+  name: *******************c
 spec:
-  type: LoadBalancer
+  type: ***********r
   selector:
-    app: edtech-india-api
+    app: ***************i
   ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 8000
+    - protocol: **P
+      port: *0
+      targetPort: ***0
 ---
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
+apiVersion: *************2
+kind: **********************r
 metadata:
-  name: edtech-india-api-hpa
+  name: *******************a
 spec:
   scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: edtech-india-api
+    apiVersion: ******1
+    kind: *********t
+    name: ***************i
   minReplicas: 2
   maxReplicas: 8
   metrics:
-    - type: Resource
+    - type: *******e
       resource:
-        name: cpu
+        name: **u
         target:
-          type: Utilization
-          averageUtilization: 65
+          type: **********n
+          averageUtilization: *5
 ---
 # Secrets are NOT created with `kubectl create secret` or stored in this repo.
 # They live in Azure Key Vault (provisioned by terraform/secrets.tf) and are

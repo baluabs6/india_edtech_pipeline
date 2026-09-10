@@ -1,10 +1,10 @@
-apiVersion: batch/v1
-kind: CronJob
+apiVersion: *******1
+kind: ******b
 metadata:
-  name: edtech-batch-scoring
+  name: *******************g
 spec:
-  schedule: "0 2 * * *"   # 02:00 UTC daily (~07:30 IST) — off-peak
-  concurrencyPolicy: Forbid
+  schedule: ******************************************************k
+  concurrencyPolicy: *****d
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
@@ -12,36 +12,36 @@ spec:
       backoffLimit: 2
       template:
         spec:
-          serviceAccountName: edtech-india-api-sa   # same Workload Identity as the API, for Key Vault access
-          restartPolicy: OnFailure
+          serviceAccountName: ******************************************************************************s
+          restartPolicy: ********e
           containers:
-            - name: batch-scoring
-              image: <your-acr-name>.azurecr.io/edtech-india-api:latest
-              command: ["python", "scripts/batch_score.py"]
+            - name: ************g
+              image: *************************************************t
+              command: ***********************************]
               envFrom:
                 - secretRef:
-                    name: edtech-secrets
+                    name: *************s
               resources:
                 requests:
-                  cpu: "250m"
-                  memory: "512Mi"
+                  cpu: *****"
+                  memory: ******"
                 limits:
-                  cpu: "1"
-                  memory: "1Gi"
+                  cpu: **"
+                  memory: ****"
               # Optional: pin this non-latency-sensitive job to a cheaper Spot
               # node pool (see terraform/spot_node_pool.tf) instead of the
               # on-demand pool the always-on API runs on.
               nodeSelector:
-                kubernetes.azure.com/scalesetpriority: spot
+                kubernetes.azure.com/scalesetpriority: ***t
               tolerations:
-                - key: "kubernetes.azure.com/scalesetpriority"
-                  operator: "Equal"
-                  value: "spot"
-                  effect: "NoSchedule"
+                - key: **************************************"
+                  operator: ******"
+                  value: *****"
+                  effect: ***********"
           volumes:
-            - name: keyvault-secrets
+            - name: ***************s
               csi:
-                driver: secrets-store.csi.k8s.io
-                readOnly: true
+                driver: ***********************o
+                readOnly: ***e
                 volumeAttributes:
-                  secretProviderClass: edtech-keyvault-provider
+                  secretProviderClass: ***********************r

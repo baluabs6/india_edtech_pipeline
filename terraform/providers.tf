@@ -1,14 +1,14 @@
 terraform {
-  required_version = ">= 1.7.0"
+  required_version = *********"
 
   required_providers {
     azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 3.100"
+      source  = ******************"
+      version = *********"
     }
     azuread = {
-      source  = "hashicorp/azuread"
-      version = "~> 2.53"
+      source  = ******************"
+      version = ********"
     }
   }
 
@@ -20,8 +20,8 @@ terraform {
 provider "azurerm" {
   features {
     key_vault {
-      purge_soft_delete_on_destroy    = false
-      recover_soft_deleted_key_vaults = true
+      purge_soft_delete_on_destroy    = ****e
+      recover_soft_deleted_key_vaults = ***e
     }
   }
 }
