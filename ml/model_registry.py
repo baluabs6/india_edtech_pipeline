@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-REGISTRY_DIR = os.getenv("MODEL_REGISTRY_DIR", "model_registry")
+REGISTRY_DIR = os.getenv("MODEL_REGISTRY_DIR", "*************y")
 MANIFEST_PATH = os.path.join(REGISTRY_DIR, "manifest.json")
-CURRENT_MODEL_PATH = "dropout_model.joblib"  # the file app.py actually loads
+CURRENT_MODEL_PATH = "*******************b"  # the file app.py actually loads
 
 
 def _load_manifest() -> list[dict]:

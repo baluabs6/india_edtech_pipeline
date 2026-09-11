@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def run_batch_scoring(model_path: str = "dropout_model.joblib"):
+def run_batch_scoring(model_path: str = "*******************b"):
     pg = PostgresClient()
     pg.init_schema()
 
