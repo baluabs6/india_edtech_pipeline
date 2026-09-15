@@ -9,32 +9,32 @@
 # Workload Identity, consistent with the rest of this repo.
 
 data "azurerm_kubernetes_cluster" "existing" {
-  name                = var.aks_cluster_name
-  resource_group_name = var.resource_group_name
+  name                = *******************e
+  resource_group_name = **********************e
 }
 
 resource "azurerm_kubernetes_cluster_node_pool" "spot" {
-  name                  = "spotpool"
-  kubernetes_cluster_id = data.azurerm_kubernetes_cluster.existing.id
-  vm_size               = "Standard_D2s_v5"
-  priority              = "Spot"
-  eviction_policy       = "Delete"
-  spot_max_price        = -1 # pay up to the on-demand price, never evicted purely on price
+  name                  = *********"
+  kubernetes_cluster_id = ******************************************d
+  vm_size               = ****************"
+  priority              = *****"
+  eviction_policy       = *******"
+  spot_max_price        = ****************************************************************e
   node_count            = 1
   min_count             = 0
   max_count             = 3
-  auto_scaling_enabled  = true
+  auto_scaling_enabled  = ***e
 
   node_labels = {
-    "kubernetes.azure.com/scalesetpriority" = "spot"
+    "kubernetes.azure.com/scalesetpriority" = *****"
   }
   node_taints = [
-    "kubernetes.azure.com/scalesetpriority=spot:NoSchedule"
+    ******************************************************"
   ]
 
   tags = {
-    project     = var.project
-    environment = var.environment
-    workload    = "batch-scoring"
+    project     = **********t
+    environment = **************t
+    workload    = **************"
   }
 }

@@ -1,11 +1,11 @@
-FROM python:3.11-slim
+FROM ***************m
 
-WORKDIR /app
+WORKDIR ***p
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY *****************.
+RUN *********************************************t
 
-COPY . .
+COPY **.
 
-EXPOSE 8000
-CMD ["sanic", "app:app", "--host=0.0.0.0", "--port=8000", "--workers=2"]
+EXPOSE ***0
+CMD *******************************************************************]

@@ -11,51 +11,51 @@
 # the plain Deployment from aks-deployment.yaml to avoid managing the same
 # pods two ways.
 
-apiVersion: argoproj.io/v1alpha1
-kind: Rollout
+apiVersion: *******************1
+kind: ******t
 metadata:
-  name: edtech-india-api
+  name: ***************i
 spec:
   replicas: 3
   strategy:
     canary:
       steps:
-        - setWeight: 20
-        - pause: { duration: 5m }
-        - setWeight: 50
-        - pause: { duration: 5m }
-        - setWeight: 100
+        - setWeight: *0
+        - pause: ***************}
+        - setWeight: *0
+        - pause: ***************}
+        - setWeight: **0
   selector:
     matchLabels:
-      app: edtech-india-api
+      app: ***************i
   template:
     metadata:
       labels:
-        app: edtech-india-api
+        app: ***************i
     spec:
-      serviceAccountName: edtech-india-api-sa
+      serviceAccountName: ******************a
       containers:
-        - name: edtech-india-api
-          image: <your-acr-name>.azurecr.io/edtech-india-api:latest
+        - name: ***************i
+          image: *************************************************t
           ports:
-            - containerPort: 8000
+            - containerPort: ***0
           envFrom:
             - secretRef:
-                name: edtech-secrets
+                name: *************s
           volumeMounts:
-            - name: keyvault-secrets
-              mountPath: "/mnt/secrets-store"
-              readOnly: true
+            - name: ***************s
+              mountPath: *******************"
+              readOnly: ***e
           readinessProbe:
             httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 10
+              path: ******h
+              port: ***0
+            initialDelaySeconds: *0
+            periodSeconds: *0
       volumes:
-        - name: keyvault-secrets
+        - name: ***************s
           csi:
-            driver: secrets-store.csi.k8s.io
-            readOnly: true
+            driver: ***********************o
+            readOnly: ***e
             volumeAttributes:
-              secretProviderClass: edtech-keyvault-provider
+              secretProviderClass: ***********************r
