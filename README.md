@@ -93,37 +93,161 @@ whole environment can be rebuilt from scratch if needed.
 
 ---
 
-## 3. Architecture
+## 3. Application Architecture
 
+### 3.1 System overview
+
+```mermaid
+flowchart TB
+    subgraph Clients["Clients"]
+        WEB["Web / Mobile app"]
+        WA["WhatsApp user"]
+    end
+
+    META["Meta WhatsApp Cloud API"]
+
+    subgraph AKS["Azure Kubernetes Service (AKS)"]
+        direction TB
+        subgraph API["Sanic API service - app.py (Deployment + Service + HPA)"]
+            MW["Middleware<br/>API-key / JWT auth, state scoping,<br/>tiered rate limiting, metrics + logging"]
+            ROUTES["/v1/* routes<br/>auth, students, schools, districts,<br/>export, models, ask, ask/stream (WS)"]
+            HOOK["/webhook/whatsapp<br/>HMAC signature check"]
+            RAG["RAG engine<br/>genai/rag_pipeline.py"]
+            LANG["Language utils<br/>genai/language_utils.py"]
+            MODEL["Dropout model + SHAP<br/>ml/dropout_risk_model.py"]
+            REG["Model registry<br/>versions + rollback"]
+        end
+        subgraph BATCH["Nightly CronJob - scripts/batch_score.py (Spot node pool)"]
+            SCORE["Score all students"]
+            ALERT["Email alert on newly high-risk"]
+        end
+    end
+
+    subgraph DATA["Data layer"]
+        PG[("PostgreSQL<br/>schools, students, risk scores<br/>+ pgvector embeddings")]
+        MONGO[("MongoDB<br/>policy documents,<br/>feedback")]
+        REDIS[("Redis<br/>response cache +<br/>rate limits + refresh tokens")]
+    end
+
+    subgraph AZAI["Azure AI services"]
+        AOAI["Azure OpenAI<br/>gpt-4o-mini + text-embedding-3-small"]
+        AILANG["Azure AI Language<br/>language detection"]
+    end
+
+    subgraph INGEST["Ingestion - ingestion/ingest_pipeline.py"]
+        RAW["Raw UDISE+-style extract"] --> CLEAN["pandas / NumPy cleaning<br/>+ pandera validation<br/>+ digital access index"]
+    end
+
+    KV["Azure Key Vault<br/>(Workload Identity + CSI driver)"]
+    SMTP["SMTP server"]
+    OTEL["OpenTelemetry collector<br/>(traces)"]
+
+    WEB -->|"HTTPS / WebSocket"| MW
+    WA <-->|"messages"| META
+    META -->|"webhook POST"| HOOK
+    HOOK -->|"reply via Graph API"| META
+    MW --> ROUTES
+    ROUTES --> RAG
+    ROUTES --> MODEL
+    ROUTES --> REG
+    HOOK --> RAG
+    ROUTES --> LANG
+    HOOK --> LANG
+
+    MW <--> REDIS
+    ROUTES <--> REDIS
+    ROUTES --> PG
+    ROUTES -->|"feedback"| MONGO
+    RAG -->|"vector search"| PG
+    RAG --> AOAI
+    LANG --> AILANG
+
+    CLEAN --> PG
+    CLEAN --> MONGO
+    MONGO -.->|"index_documents()"| PG
+
+    SCORE --> PG
+    SCORE --> ALERT --> SMTP
+
+    KV -.->|"secrets at startup"| API
+    KV -.->|"secrets at startup"| BATCH
+    API -.->|"OTLP spans"| OTEL
 ```
-Raw data (UDISE+-style extract)
-        │  pandas / numpy cleaning + pandera schema validation
-        ▼
-┌──────────────────────────┐        ┌──────────────────────┐
-│       PostgreSQL          │        │       MongoDB         │
-│ schools/students          │        │ policy docs, feedback │
-│ + precomputed risk scores │        │ RAG answer feedback   │
-│ + pgvector (RAG embeddings)│       └──────────┬────────────┘
-└────────┬──────────────────┘                   │
-         │                              Azure OpenAI embeddings
-   nightly batch scoring job            + translation + generation
-   (AKS CronJob) → email alerts                  │
-         │                                       │
-         └────────────────┬──────────────────────┘
-                           ▼
-                Sanic service (app.py) — /v1/* API
-             JWT (per-state) + API-key auth, rate limiting
-                  ↕ Redis (cache + rate limit)
-                           │
-              ┌────────────┴─────────────┐
-              ▼                          ▼
-      Web/mobile client            WhatsApp (Meta Cloud API)
-                           │
-                  containerized (Docker)
-                           ▼
-                Azure Kubernetes Service (AKS)
-     Deployment/CronJob + Service + HPA + Secrets (Key Vault)
+
+### 3.2 Request flow - asking a policy question (`/v1/ask` and WhatsApp)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant API as Sanic API
+    participant R as Redis
+    participant L as Azure AI Language
+    participant O as Azure OpenAI
+    participant P as Postgres + pgvector
+
+    U->>API: Question (API call or WhatsApp webhook)
+    API->>R: Auth check + rate-limit counter
+    API->>L: Detect language
+    API->>R: Cache lookup (question, top_k, language)
+    alt Cache hit
+        R-->>API: Cached answer
+    else Cache miss
+        opt Question is not English
+            API->>O: Translate question to English
+        end
+        API->>O: Embed question
+        API->>P: Vector similarity search (top candidates)
+        API->>API: Re-rank (vector distance + keyword overlap)
+        API->>O: Generate answer from top chunks only, in the user's language
+        O-->>API: Grounded answer
+        API->>R: Cache answer (TTL)
+    end
+    API-->>U: Answer in the asker's language
 ```
+
+### 3.3 Nightly dropout-risk scoring
+
+```mermaid
+flowchart LR
+    CRON["AKS CronJob<br/>(Spot node pool)"] --> LOAD["Load trained model<br/>RandomForest pipeline"]
+    LOAD --> READ["Read student dataset<br/>from Postgres"]
+    READ --> PREV["Fetch previous<br/>risk scores"]
+    PREV --> SC["Score every student<br/>(0 to 1)"]
+    SC --> UP["Upsert new scores<br/>into Postgres"]
+    UP --> DIFF{"Newly above<br/>high-risk threshold?"}
+    DIFF -->|Yes| MAIL["Email alert to<br/>school administrators"]
+    DIFF -->|No| DONE["Done"]
+    UP -.-> API2["API serves precomputed<br/>scores: /v1/students/at-risk"]
+```
+
+### 3.4 Infrastructure and delivery
+
+```mermaid
+flowchart LR
+    DEV["Developer<br/>push / PR"] --> GH["GitHub Actions"]
+    subgraph PIPE["ci-cd.yml"]
+        direction LR
+        T1["Lint + tests<br/>flake8, black, pytest"] --> T2["Terraform plan"] --> T3["Terraform apply<br/>(main only)"] --> T4["Build image,<br/>push to ACR"] --> T5["Deploy manifests<br/>to AKS"]
+    end
+    GH --> PIPE
+    GH -.->|"OIDC login<br/>no long-lived creds"| AZ["Azure"]
+
+    subgraph TF["Provisioned by Terraform"]
+        RG["Resource group"]
+        KV2["Key Vault + secrets"]
+        SPOT["Spot node pool"]
+        WI["Workload identity<br/>+ federated credential"]
+    end
+    T3 --> TF
+    WI -->|"read access"| KV2
+    T4 --> ACR["Azure Container Registry"]
+    T5 --> K8S["AKS: Deployment, HPA 2-8 pods,<br/>CronJob, Argo Rollout (canary)"]
+    ACR --> K8S
+```
+
+> The diagrams are written in [Mermaid](https://mermaid.js.org/) and render
+> automatically on GitHub, GitLab and most Markdown viewers.
 
 ---
 
